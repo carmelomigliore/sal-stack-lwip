@@ -46,6 +46,9 @@
     "k64f": {
       "sal-driver-lwip-k64f-eth": "^1.0.0",
       "sal-iface-eth": "^1.0.0"
+    },
+    "stm32l4" : {
+      "sal-iface-serialmodem": "carmelomigliore/sal-iface-serialmodem" 
     }
   },
   "testDependencies": {
