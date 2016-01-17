@@ -22,6 +22,7 @@
 
 // Operating System
 #define NO_SYS 1
+#define MEM_LIBC_MALLOC 1 
 
 #if NO_SYS == 0
 #include "cmsis_os.h"
@@ -51,6 +52,7 @@
 #define LWIP_NETCONN                0
 #define LWIP_SOCKET                 0
 #define MEMP_NUM_SYS_TIMEOUT        16
+
 //#define LWIP_DEBUG
 
 #endif // #if NO_SYS == 0

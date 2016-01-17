@@ -110,6 +110,7 @@
 #include "lwip/tcpip.h"
 #include "lwip/api.h"
 #include "lwip/snmp.h"
+#include "mbed-hal/us_ticker_api.h"
 
 #include <string.h>
 
@@ -426,6 +427,13 @@ pppHup(int pd)
 /***********************************/
 /*** PUBLIC FUNCTION DEFINITIONS ***/
 /***********************************/
+
+u32_t sys_jiffies(void) {
+    static u32_t jiffies = 0;
+    jiffies += 1 + (us_ticker_read()/10000);
+    return jiffies;
+}
+
 /* Initialize the PPP subsystem. */
 
 struct ppp_settings ppp_settings;
