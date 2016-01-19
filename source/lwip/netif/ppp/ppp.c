@@ -250,7 +250,7 @@ static void pppInProc(PPPControlRx *pcrx, u_char *s, int l);
 /******************************/
 u_long subnetMask;
 
-static PPPControl pppControl[NUM_PPP] __attribute((section("AHBSRAM1"))); /* The PPP interface control blocks. */
+static PPPControl pppControl[NUM_PPP]; /* The PPP interface control blocks. */
 
 sys_mbox_t pppMbox; //Used to signal PPP thread that a PPP session begins
 
