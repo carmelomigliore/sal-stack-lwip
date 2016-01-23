@@ -30,6 +30,23 @@
 
 #include "sal-stack-lwip/lwipv4_init.h"
 
+/**
+ * LwIP is not re-entrant for any APIs except pbuf and memp APIs.
+ * To correct for this, all packet processing should be deferred to event context.
+ * However, since sal-driver-lwip-k64f does all packet processing in IRQ context,
+ * we must use the same paradigm here until sal-driver-lwip-k64f is updated to defer
+ * packet processing to event context.
+ *
+ * This issue is tracked at https://github.com/ARMmbed/sal-driver-lwip-k64f-eth/issues/8
+ * TODO: Remove when sal-driver-lwip-k64f-eth/#8 is fixed
+ */
+#ifdef YOTTA_SAL_DRIVER_LWIP_K64F_ETH_VERSION_STRING
+#include "uvisor-lib/uvisor-lib.h"
+
+extern volatile uint8_t emac_timer_fired;
+extern struct pbuf * volatile emac_tcp_push_pcb;
+#endif
+
 #include "lwip/netif.h"
 #include "lwip/sockets.h"
 #include "lwip/udp.h"
@@ -153,13 +170,22 @@ static socket_error_t init()
     return SOCKET_ERROR_NONE;
 }
 
+void check_timeouts() {
+// TODO: Remove when sal-driver-lwip-k64f-eth/#8 is fixed
+#ifdef YOTTA_SAL_DRIVER_LWIP_K64F_ETH_VERSION_STRING
+    emac_timer_fired = 1;
+    vIRQ_SetPendingIRQ(ENET_Receive_IRQn);
+#else
+    sys_check_timeouts();
+#endif
 
+}
 static socket_api_handler_t lwipv4_socket_periodic_task(const struct socket * sock)
 {
     switch(sock->family)
     {
         case SOCKET_STREAM:
-            return sys_check_timeouts;
+            return check_timeouts;
         default:
             break;
     }
@@ -614,7 +640,14 @@ socket_error_t lwipv4_socket_send(struct socket *socket, const void * buf, const
             struct tcp_pcb* pcb = socket->impl;
             err = tcp_write(pcb,buf,len,TCP_WRITE_FLAG_COPY);
             if (tcp_nagle_disabled(pcb)) {
+
+// TODO: Remove when sal-driver-lwip-k64f-eth/#8 is fixed
+#ifdef YOTTA_SAL_DRIVER_LWIP_K64F_ETH_VERSION_STRING
+                emac_tcp_push_pcb = (struct pbuf * volatile)pcb;
+                vIRQ_SetPendingIRQ(ENET_Receive_IRQn);
+#else
                 tcp_output(pcb);
+#endif
             }
             break;
         }
@@ -667,6 +700,34 @@ static socket_error_t recv_validate(struct socket *socket, void * buf, size_t *l
     return SOCKET_ERROR_NONE;
 }
 
+static struct pbuf* pbuf_consume(struct pbuf *p, size_t consume, uint32_t free_partial) {
+    do {
+        if (consume <= p->len) {
+            /* advance the payload pointer by the number of bytes copied */
+            p->payload = (char *)p->payload + consume;
+            /* reduce the length by the number of bytes copied */
+            p->len -= consume;
+            /* break out of the loop */
+            consume = 0;
+        }
+        if (p->len == 0 || consume > p->len || (consume == 0 && free_partial)) {
+            struct pbuf *q;
+            q = p->next;
+            /* decrement the number of bytes copied by the length of the buffer */
+            if(consume > p->len)
+                consume -= p->len;
+            /* Free the current pbuf */
+            /* NOTE: This operation is interrupt safe, but not thread safe. */
+            if (q != NULL) {
+                pbuf_ref(q);
+            }
+            pbuf_free(p);
+            p = q;
+        }
+    } while (consume);
+    return p;
+}
+
 static socket_error_t recv_copy_free(struct socket *socket, void * buf,
         size_t *len) {
     struct pbuf *p;
@@ -683,46 +744,19 @@ static socket_error_t recv_copy_free(struct socket *socket, void * buf,
             copied = pbuf_copy_partial(p, buf, *len, 0);
             /* Set the external length to the number of bytes copied */
             *len = copied;
-            while (copied) {
-                if (copied < p->len) {
-                    /* advance the payload pointer by the number of bytes copied */
-                    p->payload = (char *)p->payload + copied;
-                    /* reduce the length by the number of bytes copied */
-                    p->len -= copied;
-                    /* break out of the loop */
-                    copied = 0;
-                } else {
-                    struct pbuf *q;
-                    uint16_t freelen = p->tot_len;
-                    q = p->next;
-                    /* decrement the number of bytes copied by the length of the buffer */
-                    copied -= p->len;
-                    /* Free the current pbuf */
-                    /* NOTE: This operation is interrupt safe, but not thread safe. */
-                    if (q != NULL) {
-                        pbuf_ref(q);
-                    }
-                    socket->rxBufChain = q;
-                    pbuf_free(p);
-                    /* Update the TCP window */
-                    tcp_recved(socket->impl, freelen);
-                    p = q;
-                }
-            }
+            p = pbuf_consume(p, copied, 0);
+            socket->rxBufChain = p;
+            /* Update the TCP window */
+            tcp_recved(socket->impl, copied);
             break;
         }
         case SOCKET_DGRAM: {
-            struct pbuf *q;
-            size_t cplen = ((*len) < (p->len) ? (*len) : (p->len));
+            size_t cplen = ((*len) < (p->tot_len) ? (*len) : (p->tot_len));
             copied = pbuf_copy_partial(p, buf, cplen, 0);
             *len = copied;
-            q = p->next;
-            /* NOTE: This operation is interrupt safe, but not thread safe. */
-            if (q != NULL) {
-                pbuf_ref(q);
-            }
-            socket->rxBufChain = q;
-            pbuf_free(p);
+            /* a single read must always consume the whole UDP packet */
+            p = pbuf_consume(p, p->tot_len, 1); /* free partial */
+            socket->rxBufChain = p;
             break;
         }
         default:
