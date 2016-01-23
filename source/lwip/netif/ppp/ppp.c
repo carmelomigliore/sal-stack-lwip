@@ -282,7 +282,7 @@ struct protent *ppp_protocols[] = {
  * Buffers for outgoing packets.  This must be accessed only from the appropriate
  * PPP task so that it doesn't need to be protected to avoid collisions.
  */
-u_char outpacket_buf[NUM_PPP][PPP_MRU+PPP_HDRLEN] __attribute((section("AHBSRAM1")));
+u_char outpacket_buf[NUM_PPP][PPP_MRU+PPP_HDRLEN];
 
 
 /*****************************/
