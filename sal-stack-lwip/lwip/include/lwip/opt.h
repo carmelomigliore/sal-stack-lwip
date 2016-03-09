@@ -1702,14 +1702,14 @@
  * (XXX - these constants should simply be shared by lcp.c instead
  *    of living in lcp.h)
  */
-#define PPP_MTU                         1500     /* Default MTU (size of Info field) */
+#define PPP_MTU                         300     /* Default MTU (size of Info field) */
 #ifndef PPP_MAXMTU
 /* #define PPP_MAXMTU  65535 - (PPP_HDRLEN + PPP_FCSLEN) */
-#define PPP_MAXMTU                      1500 /* Largest MTU we allow */
+#define PPP_MAXMTU                      300 /* Largest MTU we allow */
 #endif
 #define PPP_MINMTU                      64
-#define PPP_MRU                         1500     /* default MRU = max length of info field */
-#define PPP_MAXMRU                      1500     /* Largest MRU we allow */
+#define PPP_MRU                         300     /* default MRU = max length of info field */
+#define PPP_MAXMRU                      300     /* Largest MRU we allow */
 #ifndef PPP_DEFMRU
 #define PPP_DEFMRU                      296             /* Try for this */
 #endif
